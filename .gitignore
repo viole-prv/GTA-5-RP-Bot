@@ -1,0 +1,11 @@
+*.sh
+*.user
+**/Properties/launchSettings.json
+
+[Dd]ebug/
+[Rr]elease/
+
+[Bb]in/
+[Oo]bj/
+
+.vs/
