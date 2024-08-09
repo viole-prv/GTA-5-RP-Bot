@@ -176,9 +176,10 @@ namespace GTA_5_RP_Bot
             public enum EPosition : byte
             {
                 ACTIVE,
-                INACTIVE,
                 NEXT,
-                UNABLE
+                INACTIVE,
+                UNABLE,
+                LIMITED
             }
 
             public EPosition Position { get; set; }
@@ -521,6 +522,8 @@ namespace GTA_5_RP_Bot
             public DateTimeOffset? Date { get; set; }
             public TimeSpan? Header { get; set; }
 
+            public bool History { get; set; }
+
             private void Factory()
             {
                 Source?.Cancel();
@@ -543,7 +546,7 @@ namespace GTA_5_RP_Bot
                     }
 
                 }
-                else
+                else if (History)
                 {
                     if (Date.HasValue)
                     {
@@ -1013,13 +1016,13 @@ namespace GTA_5_RP_Bot
                                 Name = "Неофициальная организация",
                                 List = new List<INotice>
                                 {
-                                    new() { Name = "Большой улов", Time = TimeSpan.FromHours(24), Dump = false },
+                                    new() { Name = "Большой улов", Time = TimeSpan.FromHours(24), Dump = false, History = true },
 
-                                    new() { Name = "Грандиозная уборка", Time = TimeSpan.FromHours(26), Dump = false },
-                                    new() { Name = "Мясной день", Time = TimeSpan.FromHours(26), Dump = false },
+                                    new() { Name = "Грандиозная уборка", Time = TimeSpan.FromHours(26), Dump = false, History = true },
+                                    new() { Name = "Мясной день", Time = TimeSpan.FromHours(26), Dump = false, History = true },
 
-                                    new() { Name = "Долгожданная встреча", Time = TimeSpan.FromHours(20), Dump = false },
-                                    new() { Name = "Обновляем гардероб", Time = TimeSpan.FromHours(20), Dump = false }
+                                    new() { Name = "Долгожданная встреча", Time = TimeSpan.FromHours(20), Dump = false, History = true },
+                                    new() { Name = "Обновляем гардероб", Time = TimeSpan.FromHours(20), Dump = false, History = true }
                                 }}
                         }
                     });
@@ -1031,8 +1034,8 @@ namespace GTA_5_RP_Bot
                     Group = 2,
                     List = new List<INotice>
                     {
-                        new() { Name = "Угон авто", Time = TimeSpan.FromHours(1.5) },
-                        new() { Name = "Работа сутенёром", Time = TimeSpan.FromHours(1.5) }
+                        new() { Name = "Угон авто", Time = TimeSpan.FromHours(1.5), History = true },
+                        new() { Name = "Работа сутенёром", Time = TimeSpan.FromHours(1.5), History = true }
                     }
                 });
 
@@ -1041,14 +1044,15 @@ namespace GTA_5_RP_Bot
                     Name = "Неофициальная организация",
                     Group = 2,
                     Time = TimeSpan.FromHours(2),
+                    History = true,
                     List = new List<INotice>
                     {
 
-                        new() { Name = "Скользкая дорожка", Time = TimeSpan.FromHours(3) },
-                        new() { Name = "Мотивированное волонтерство", Time = TimeSpan.FromHours(3) },
+                        new() { Name = "Скользкая дорожка", Time = TimeSpan.FromHours(3), History = true },
+                        new() { Name = "Мотивированное волонтерство", Time = TimeSpan.FromHours(3), History = true },
 
-                        new() { Name = "Долгожданная встреча", Time = TimeSpan.FromHours(4) },
-                        new() { Name = "Обновляем гардероб", Time = TimeSpan.FromHours(4) }
+                        new() { Name = "Долгожданная встреча", Time = TimeSpan.FromHours(4), History = true },
+                        new() { Name = "Обновляем гардероб", Time = TimeSpan.FromHours(4), History = true }
                     }
                 });
 
@@ -2029,118 +2033,133 @@ namespace GTA_5_RP_Bot
                 {
                     while (true)
                     {
-                        if (UserList.Any(x => x.Security[X.ID]) && Security.Active)
-                        {
-                            if (X.Can)
-                            {
-                                var List = UserList
-                                    .Where(x => x.Security[X.ID])
-                                    .OrderBy(x => x.Time)
-                                    .ToList();
-
-                                for (int i = 0; i < List.Count && Security.Active && X.Can; i++)
-                                {
-                                    double Average = Helper.Average(List.Count);
-
-                                    var Read = await Discord.ThreadRead(X, List[i]);
-
-                                    if (Read is not null)
-                                    {
-                                        var T = Read
-                                            .Select((x, i) => (Value: x, Index: i))
-                                            .Where(x => List[i].Login == x.Value.Author.Login)
-                                            .ToList();
-
-                                        if (T.Any())
-                                        {
-                                            if (T.Min(x => x.Index) <= 10)
-                                            {
-                                                List[i].Time = null;
-
-                                                await Task.Delay(Delay(
-                                                    X,
-                                                    Average / 2
-                                                ));
-
-                                                continue;
-                                            }
-                                        }
-                                    }
-
-                                    await Task.Delay(2500);
-
-                                    var Write = await Discord.ThreadWrite(X, List[i]);
-
-                                    if (Write == null)
-                                    {
-                                        List[i].Security[X.ID] = false;
-                                        List[i].Error = 0;
-                                    }
-                                    else
-                                    {
-                                        if (Write.Code.HasValue)
-                                        {
-                                            if (Write.Code == ERROR_SLOW_MODE)
-                                            {
-                                                List[i].Time = Math.Ceiling(Write.Retry / 60f);
-
-                                                if (List[i].Time < Average && List.Count - 1 > i)
-                                                {
-                                                    X.Date = null;
-                                                    X.Position = ISeparate.EPosition.NEXT;
-
-                                                    await Task.Delay(30 * 1000);
-                                                }
-                                                else
-                                                {
-                                                    double N = List.Where(x => x.Time.HasValue).Min(x => x.Time!.Value);
-
-                                                    await Task.Delay(Delay(
-                                                        X,
-                                                        N > Average
-                                                            ? Average
-                                                            : N
-                                                    ));
-                                                }
-                                            }
-                                            else
-                                            {
-                                                List[i].Security[X.ID] = false;
-                                                List[i].Error = Write.Code;
-
-                                                if (Telegram is not null)
-                                                {
-                                                    await Telegram.SendMessage($"[{List[i].Name}] Ошибка: {List[i].Error}!", Message == EMessage.MUTE);
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            List[i].Error = null;
-                                            List[i].Time = null;
-
-                                            await Task.Delay(Delay(
-                                                X,
-                                                Average
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                X.Date = null;
-                                X.Position = ISeparate.EPosition.UNABLE;
-
-                                await Task.Delay(15 * 1000);
-                            }
-                        }
-                        else
+                        if (!Security.Active)
                         {
                             X.Date = null;
                             X.Position = ISeparate.EPosition.INACTIVE;
 
-                            await Task.Delay(1000);
+                            await Task.Delay(5 * 1000);
+
+                            continue;
+                        }
+
+                        if (!X.Can)
+                        {
+                            X.Date = null;
+                            X.Position = ISeparate.EPosition.UNABLE;
+
+                            await Task.Delay(15 * 1000);
+
+                            continue;
+                        }
+
+                        if (!UserList.Any(x => x.Security[X.ID]))
+                        {
+                            X.Date = null;
+                            X.Position = ISeparate.EPosition.LIMITED;
+
+                            await Task.Delay(30 * 1000);
+
+                            continue;
+                        }
+
+                        var List = UserList
+                            .OrderBy(x => x.Time)
+                            .ToList();
+
+                        double Average = Helper.Average(List.Count);
+
+                        for (int i = 0; i < List.Count; i++)
+                        {
+                            if (!Security.Active) break;
+
+                            if (!X.Can) break;
+
+                            if (!List[i].Security[X.ID]) continue;
+
+                            var Read = await Discord.ThreadRead(X, List[i]);
+
+                            if (Read is not null)
+                            {
+                                var T = Read
+                                    .Select((x, i) => (Value: x, Index: i))
+                                    .Where(x => List[i].Login == x.Value.Author.Login)
+                                    .ToList();
+
+                                if (T.Any())
+                                {
+                                    if (T.Min(x => x.Index) <= 10)
+                                    {
+                                        List[i].Time = null;
+
+                                        await Task.Delay(Delay(
+                                            X,
+                                            Average / 2
+                                        ));
+
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            await Task.Delay(2500);
+
+                            var Write = await Discord.ThreadWrite(X, List[i]);
+
+                            if (Write == null)
+                            {
+                                List[i].Security[X.ID] = false;
+                                List[i].Error = 0;
+                            }
+                            else
+                            {
+                                if (Write.Code.HasValue)
+                                {
+                                    if (Write.Code == ERROR_SLOW_MODE)
+                                    {
+                                        List[i].Time = Math.Ceiling(Write.Retry / 60f);
+
+                                        if (List[i].Time < Average && List.Count - 1 > i)
+                                        {
+                                            X.Date = null;
+                                            X.Position = ISeparate.EPosition.NEXT;
+
+                                            await Task.Delay(30 * 1000);
+                                        }
+                                        else
+                                        {
+                                            double N = List.Where(x => x.Time.HasValue).Min(x => x.Time!.Value);
+
+                                            await Task.Delay(Delay(
+                                                X,
+                                                N > Average
+                                                    ? Average
+                                                    : N
+                                            ));
+                                        }
+                                    }
+                                    else
+                                    {
+                                        List[i].Security[X.ID] = false;
+                                        List[i].Error = Write.Code;
+
+                                        if (Telegram is not null)
+                                        {
+                                            await Telegram.SendMessage($"[{List[i].Name}] Ошибка: {List[i].Error}!", Message == EMessage.MUTE);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    List[i].Error = null;
+                                    List[i].Time = null;
+
+                                    await Task.Delay(Delay(
+                                        X,
+                                        Average
+                                    ));
+                                }
+                            }
                         }
                     }
                 });
