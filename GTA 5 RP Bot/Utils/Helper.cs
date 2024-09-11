@@ -7,6 +7,11 @@ namespace GTA_5_RP_Bot
     {
         private static readonly Random Random = new();
 
+        public static double Double(double Minimum, double Maximum)
+        {
+            return Random.NextDouble() * (Maximum - Minimum) + Minimum;
+        }
+
         public static bool IsValidJson(string _)
         {
             if (string.IsNullOrWhiteSpace(_))
@@ -295,9 +300,7 @@ namespace GTA_5_RP_Bot
 
         public static double Average(int Count)
         {
-            return Math.Ceiling(60d / Count)
-                + 1d
-                + Random.NextDouble();
+            return Math.Ceiling(60d / Count) + Double(5, 10);
         }
     }
 }

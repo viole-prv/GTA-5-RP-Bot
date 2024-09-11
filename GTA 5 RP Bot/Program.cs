@@ -202,37 +202,10 @@ namespace GTA_5_RP_Bot
                     public string Name { get; set; }
 
                     [JsonProperty]
-                    public string Alternative { get; set; }
+                    public string RL { get; set; } = "";
 
                     [JsonProperty]
                     public List<string> IDs { get; set; }
-
-                    [JsonProperty]
-                    public List<string> Description { get; set; }
-
-                    [JsonProperty]
-                    public Dictionary<int, decimal> Value { get; set; }
-
-                    [JsonProperty]
-                    public string Spoiler { get; set; }
-
-                    [JsonConstructor]
-                    public IList(string Name, string Alternative, List<string> IDs, List<string> Description, Dictionary<int, decimal> Value, string Spoiler)
-                    {
-                        Certificate ??= new();
-
-                        foreach (string ID in IDs)
-                        {
-                            Certificate.Add(new(ID, Name));
-                        }
-
-                        this.Name = Name;
-                        this.Alternative = Alternative;
-                        this.IDs = IDs;
-                        this.Description = Description;
-                        this.Value = Value;
-                        this.Spoiler = Spoiler;
-                    }
 
                     public enum ETuning : byte
                     {
@@ -242,10 +215,42 @@ namespace GTA_5_RP_Bot
                     }
 
                     [JsonProperty]
-                    public ETuning Tuning { get; set; }
+                    public ETuning Tuning { get; set; } = ETuning.NONE;
 
                     [JsonProperty]
                     public string Image { get; set; } = "";
+
+                    [JsonProperty]
+                    public List<string> Description { get; set; } = new();
+
+                    [JsonProperty]
+                    public Dictionary<int, decimal> Dictionary { get; set; } = new();
+
+                    [JsonIgnore]
+                    public bool Any
+                    {
+                        get
+                        {
+                            return Dictionary.Any();
+                        }
+                    }
+
+                    [JsonProperty]
+                    public string Spoiler { get; set; } = "";
+
+                    [JsonConstructor]
+                    public IList(string Name, List<string> IDs)
+                    {
+                        Certificate ??= new();
+
+                        foreach (string ID in IDs)
+                        {
+                            Certificate.Add(new(ID, Name));
+                        }
+
+                        this.Name = Name;
+                        this.IDs = IDs;
+                    }
 
                     #region Certificate
 
@@ -262,24 +267,6 @@ namespace GTA_5_RP_Bot
 
                             Active = true;
                         }
-
-                        #region History
-
-                        public class IHistory
-                        {
-                            public int Hour { get; set; }
-                            public decimal Price { get; set; }
-
-                            public IHistory(int Hour, decimal Price)
-                            {
-                                this.Hour = Hour;
-                                this.Price = Price;
-                            }
-                        }
-
-                        public List<IHistory>? History { get; set; }
-
-                        #endregion
 
                         public Thread? Thread { get; set; }
 
@@ -339,17 +326,33 @@ namespace GTA_5_RP_Bot
                             Thread.Start();
                         }
 
-                        public string Format(string? X = "")
+                        public string Condition()
                         {
-                            string A = $"[{(Active ? "√" : "X")}]";
-                            string H = "";
+                            char T = Active switch
+                            {
+                                true => '√',
+                                false => 'X'
+                            };
+
+                            return "[" + T + "]";
+
+                        }
+
+                        public string Value()
+                        {
+                            string T = "";
 
                             if (Header.HasValue)
                             {
-                                H = $"~ {Helper.Time(Header.Value)}";
+                                T = $"~ {Helper.Time(Header.Value)}";
                             }
 
-                            return string.Join(" ", new string[] { A, string.IsNullOrEmpty(X) ? ID : X, H });
+                            return T;
+                        }
+
+                        public string To(string X)
+                        {
+                            return string.Join(" ", new string[] { Condition(), X, Value() });
                         }
                     }
 
@@ -357,6 +360,29 @@ namespace GTA_5_RP_Bot
                     public List<ICertificate> Certificate { get; set; }
 
                     #endregion
+
+                    public override string ToString()
+                    {
+                        string X = Name.ToUpper();
+
+                        if (Certificate.Count == 1)
+                        {
+                            return Certificate[0].To(X);
+                        }
+
+                        return string.Join(" ", new string[]
+                        {
+                            "[" +
+                                Certificate.Count(x => x.Active) switch
+                                {
+                                    0 => 'X',
+                                    int T when T == Certificate.Count => '√',
+                                    _ => '?'
+                                } +
+                            "]",
+                            X
+                        });
+                    }
                 }
 
                 public List<IList> List { get; set; }
@@ -387,49 +413,72 @@ namespace GTA_5_RP_Bot
 
             public string? GatherContent()
             {
-                if (Car is not null && Car.List.Count > 0)
+                if (Car is not null)
                 {
-                    List<string> List = new();
+                    var List = Car.List
+                        .Where(x => x.Any)
+                        .ToList();
 
-                    foreach (var T in Car.List)
+                    if (List.Count > 0)
                     {
-                        List.Add("⠀");
-                        List.Add($"# :{(T.Certificate.Any(x => x.Active) ? "green" : "red")}_square: {T.Name}{(T.Tuning > 0 ? $" [{T.Tuning}]" : "")} || {T.Alternative} ||");
-                        List.Add("⠀");
+                        List<string> Builder = new();
 
-                        #region Description
-
-                        List.Add("```cs");
-
-                        foreach (string T1 in T.Description)
+                        foreach (var T in List)
                         {
-                            List.Add($" {T1}");
+                            Builder.Add("⠀");
+                            Builder.Add($"# :{(T.Certificate.Any(x => x.Active) ? "green" : "red")}_square: {T.Name}{(T.Tuning > 0 ? $" [{T.Tuning}]" : "")}{(string.IsNullOrEmpty(T.RL) ? "" : $" || {T.RL} ||")}");
+                            Builder.Add("⠀");
+
+                            #region Description
+
+                            if (T.Description.Count > 0)
+                            {
+                                Builder.Add("```cs");
+
+                                foreach (string T1 in T.Description)
+                                {
+                                    Builder.Add($" {T1}");
+                                }
+
+                                Builder.Add("```");
+                            }
+
+                            #endregion
+
+                            #region Value
+
+                            Builder.Add("```cs");
+
+                            foreach (var Pair in T.Dictionary)
+                            {
+                                if (Pair.Key > 99 && Config!.ShouldSerializeX2()) continue;
+
+                                Builder.Add($" {Pair.Key} {(Pair.Key == 1 ? "час" : Pair.Key < 5 ? "часа" : "часов")} - {Pair.Value}$");
+                            }
+
+                            Builder.Add("```");
+
+                            #endregion
                         }
 
-                        List.Add("```");
+                        #region Spoiler
+
+                        var Spoiler = List
+                            .Select(x => x.Spoiler)
+                            .ToList();
+
+                        Spoiler.RemoveAll(x => string.IsNullOrEmpty(x));
+
+                        if (Spoiler.Count > 0)
+                        {
+                            Builder.Add("⠀");
+                            Builder.Add($"|| сдам, аренда, {string.Join(", ", Spoiler)} ||");
+                        }
 
                         #endregion
 
-                        #region Value
-
-                        List.Add("```cs");
-
-                        foreach (var Pair in T.Value)
-                        {
-                            if (Pair.Key > 99 && Config!.ShouldSerializeX2()) continue;
-
-                            List.Add($" {Pair.Key} {(Pair.Key == 1 ? "час" : Pair.Key < 5 ? "часа" : "часов")} - {Pair.Value}$");
-                        }
-
-                        List.Add("```");
-
-                        #endregion
+                        return string.Join(Environment.NewLine, Builder);
                     }
-
-                    List.Add("⠀");
-                    List.Add($"|| сдам, аренда, {string.Join(", ", Car.List.Select(x => x.Spoiler))} ||");
-
-                    return string.Join(Environment.NewLine, List);
                 }
 
                 if (string.IsNullOrEmpty(Content))
@@ -442,18 +491,25 @@ namespace GTA_5_RP_Bot
 
             public List<string>? GatherImage()
             {
-                if (Car is not null && Car.List.Count > 0)
+                if (Car is not null)
                 {
                     var List = Car.List
-                        .Where(x => x.Certificate.Any(v => v.Active))
-                        .Select(x => x.Image)
+                        .Where(x => x.Any)
                         .ToList();
 
-                    if (List.Count == 1)
+                    if (List.Count > 0)
                     {
-                        List.RemoveAll(x => string.IsNullOrEmpty(x));
+                        var Builder = List
+                            .Where(x => x.Certificate.Any(v => v.Active))
+                            .Select(x => x.Image)
+                            .ToList();
 
-                        return List;
+                        if (Builder.Count == 1)
+                        {
+                            Builder.RemoveAll(x => string.IsNullOrEmpty(x));
+
+                            return Builder;
+                        }
                     }
                 }
 
@@ -465,15 +521,54 @@ namespace GTA_5_RP_Bot
                 return Image;
             }
 
-            public bool Can
+            public bool Go
             {
                 get
                 {
                     bool Has = Enabled.HasValue && Enabled.Value;
-                    bool Any = Car is not null && Car.List.SelectMany(x => x.Certificate).Any(x => x.Active);
+                    bool Any = Car is not null && Car.List.Where(x => x.Any).SelectMany(x => x.Certificate).Any(x => x.Active);
 
                     return Has || Any;
                 }
+            }
+
+            public string Condition()
+            {
+                char T = Enabled switch
+                {
+                    true => '√',
+                    false => 'X',
+                    _ => '~'
+                };
+
+                return "[" + T + "]";
+            }
+
+
+            public string Value()
+            {
+                string T = "";
+
+                if (Date.HasValue)
+                {
+                    var TS = Helper.Date() - Date.Value;
+
+                    if (TS < TimeSpan.Zero)
+                    {
+                        T = $"~ {TS:hh\\:mm\\:ss}";
+                    }
+                }
+                else if (Position > 0)
+                {
+                    T = $"- {Position}";
+                }
+
+                return T;
+            }
+
+            public override string ToString()
+            {
+                return string.Join(" ", new string[] { Condition(), ID, Value() });
             }
         }
 
@@ -534,38 +629,43 @@ namespace GTA_5_RP_Bot
 
             public List<INotice>? List { get; set; }
 
-            protected string Value()
+            public string Condition()
             {
-                string H = "";
+                char T = (Active || (List is not null && Recursion(Name, List).Any(x => x.Value.Active))) switch
+                {
+                    true => 'X',
+                    false when Time.HasValue => '√',
+                    _ => '~'
+                };
+
+                return "[" + T + "]";
+            }
+
+            public string Value()
+            {
+                string T = "";
 
                 if (Active)
                 {
                     if (Header.HasValue)
                     {
-                        H = $"~ {Helper.Time(Header.Value)}";
+                        T = $"~ {Helper.Time(Header.Value)}";
                     }
-
                 }
                 else if (History)
                 {
                     if (Date.HasValue)
                     {
-                        H = $"- {Date.Value:hh:mm:ss}";
+                        T = $"- {Date.Value:hh:mm:ss}";
                     }
                 }
 
-                return H;
+                return T;
             }
 
             public override string ToString()
             {
-                char Condition = Active || List is not null && Recursion(Name, List).Any(x => x.Value.Active)
-                    ? 'X'
-                    : Time.HasValue
-                        ? '√'
-                        : '~';
-
-                return string.Join(" ", new string[] { $"[{Condition}]", Name, Value() });
+                return string.Join(" ", new string[] { Condition(), Name, Value() });
             }
         }
 
@@ -1000,15 +1100,24 @@ namespace GTA_5_RP_Bot
                             new()
                             {
                                 Name = "Событие",
-                                Time = TimeSpan.FromHours(3),
+                                Time = TimeSpan.FromHours(5),
                                 Dump = false,
                                 List = new List<INotice>
                                 {
-                                    new() { Name = "Воздушная гонка", Time = TimeSpan.FromHours(3), Notification = INotice.INotification.None },
-                                    new() { Name = "Прыжки по платформам", Time = TimeSpan.FromHours(3), Notification = INotice.INotification.None },
-                                    new() { Name = "Кулинарный поединок", Time = TimeSpan.FromHours(3), Notification = INotice.INotification.None },
-                                    new() { Name = "Гонка вслепую", Time = TimeSpan.FromHours(3), Notification = INotice.INotification.None },
-                                    new() { Name = "Песочное сражение", Time = TimeSpan.FromHours(3), Notification = INotice.INotification.None }
+                                    new() { Name = "Доставка горючего", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new() { Name = "Следуйте по маршруту", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+
+                                    new() { Name = "Попал на риф", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new() { Name = "Ритм праздника", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+
+                                    new() { Name = "Частная жизнь", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new() { Name = "Безопасное пространство", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    
+                                    new() { Name = "Уборка озера", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new() { Name = "Запал праздника", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+
+                                    new() { Name = "Тестирование", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new() { Name = "Богатый рацион", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
                                 }
                             },
                             new()
@@ -1137,26 +1246,7 @@ namespace GTA_5_RP_Bot
                     Console.WriteLine("\n\n");
 
                     Selection = SeparateList
-                        .Select(x =>
-                        {
-                            string T = $"[{(x.Enabled.HasValue ? x.Enabled.Value ? "√" : "X" : "~")}] {x.ID}";
-
-                            if (x.Date.HasValue)
-                            {
-                                var TS = Helper.Date() - x.Date.Value;
-
-                                if (TS < TimeSpan.Zero)
-                                {
-                                    T += $" ~ {TS:hh\\:mm\\:ss}";
-                                }
-                            }
-                            else if (x.Position > 0)
-                            {
-                                T += $" - {x.Position}";
-                            }
-
-                            return T;
-                        })
+                        .Select(x => x.ToString())
                         .ToList();
 
                     Case = Helper.Table(Index, ">", Selection, Console.CursorTop - 1, ConsoleKey.F5, ConsoleKey.Escape);
@@ -1186,17 +1276,7 @@ namespace GTA_5_RP_Bot
                             Console.WriteLine("\n\n");
 
                             Selection = Separate.Car.List
-                                .Select(x =>
-                                {
-                                    if (x.Certificate.Count == 1)
-                                    {
-                                        return x.Certificate[0].Format(x.Name);
-                                    }
-
-                                    int Count = x.Certificate.Count(x => x.Active);
-
-                                    return $"[{(Count == 0 ? "X" : Count == x.Certificate.Count ? "√" : "?")}] {x.Name}";
-                                })
+                                .Select(x => x.ToString())
                                 .ToList();
 
                             Case = Helper.Table(Index, ">", Selection, Console.CursorTop - 1, ConsoleKey.F5, ConsoleKey.Escape, ConsoleKey.OemMinus, ConsoleKey.OemPlus);
@@ -1225,7 +1305,7 @@ namespace GTA_5_RP_Bot
                                 Console.WriteLine("\n\n");
 
                                 Selection = Car.Certificate
-                                    .Select(x => x.Format())
+                                    .Select(x => x.To(x.ID))
                                     .ToList();
 
                                 Case = Helper.Table(Index, ">", Selection, Console.CursorTop - 1, ConsoleKey.F5, ConsoleKey.Escape, ConsoleKey.OemMinus, ConsoleKey.OemPlus);
@@ -2043,7 +2123,7 @@ namespace GTA_5_RP_Bot
                             continue;
                         }
 
-                        if (!X.Can)
+                        if (!X.Go)
                         {
                             X.Date = null;
                             X.Position = ISeparate.EPosition.UNABLE;
@@ -2073,7 +2153,7 @@ namespace GTA_5_RP_Bot
                         {
                             if (!Security.Active) break;
 
-                            if (!X.Can) break;
+                            if (!X.Go) break;
 
                             if (!List[i].Security[X.ID]) continue;
 
