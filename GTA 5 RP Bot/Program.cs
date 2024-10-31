@@ -118,6 +118,7 @@ namespace GTA_5_RP_Bot
             public class IHistory
             {
                 public string ID { get; set; }
+                public long LastMessageID { get; set; }
 
                 public IHistory(string ID, long LastMessageID)
                 {
@@ -126,14 +127,13 @@ namespace GTA_5_RP_Bot
                     Update(LastMessageID);
                 }
 
-                public long LastMessageID { get; set; }
                 public DateTime Date { get; set; }
 
                 public void Update(long LastMessageID)
                 {
                     this.LastMessageID = LastMessageID;
 
-                    Date = Helper.Date(LastMessageID);
+                    Date = Helper.FromUnixTime(LastMessageID);
                 }
             }
 
@@ -147,7 +147,7 @@ namespace GTA_5_RP_Bot
 
             public override string ToString()
             {
-                return $"[{(Background ? "X" : "~")}] {Name}{(Error.HasValue ? $" | ERROR: {Error}" : "")}";
+                return $"[{(Background ? 'x' : ' ')}] {Name}{(Error.HasValue ? $" | ERROR: {Error}" : "")}";
             }
         }
 
@@ -326,17 +326,7 @@ namespace GTA_5_RP_Bot
                             Thread.Start();
                         }
 
-                        public string Condition()
-                        {
-                            char T = Active switch
-                            {
-                                true => '√',
-                                false => 'X'
-                            };
-
-                            return "[" + T + "]";
-
-                        }
+                        public string Condition() => "[" + (Active ? '√' : 'x') + "]";
 
                         public string Value()
                         {
@@ -370,18 +360,7 @@ namespace GTA_5_RP_Bot
                             return Certificate[0].To(X);
                         }
 
-                        return string.Join(" ", new string[]
-                        {
-                            "[" +
-                                Certificate.Count(x => x.Active) switch
-                                {
-                                    0 => 'X',
-                                    int T when T == Certificate.Count => '√',
-                                    _ => '?'
-                                } +
-                            "]",
-                            X
-                        });
+                        return string.Join(" ", new string[] { "[" + (Certificate.Any(x => x.Active) ? Certificate.All(x => x.Active) ? '√' : ' ' : 'x') + "]", X });
                     }
                 }
 
@@ -532,18 +511,7 @@ namespace GTA_5_RP_Bot
                 }
             }
 
-            public string Condition()
-            {
-                char T = Enabled switch
-                {
-                    true => '√',
-                    false => 'X',
-                    _ => '~'
-                };
-
-                return "[" + T + "]";
-            }
-
+            public string Condition() => "[" + (Enabled.HasValue ? Enabled.Value ? '√' : 'x' : ' ') + "]";
 
             public string Value()
             {
@@ -580,35 +548,83 @@ namespace GTA_5_RP_Bot
 
         public class INotice
         {
-            public string Name { get; set; } = "";
+            public string Name { get; set; }
             public int Group { get; set; }
+
+            public INotice(string Name, int Group)
+            {
+                this.Name = Name;
+                this.Group = Group;
+            }
 
             public TimeSpan? Time { get; set; }
 
-            public bool Dump { get; set; } = true;
+            public INotice(string Name, TimeSpan? Time = null)
+            {
+                this.Name = Name;
+                this.Time = Time;
+            }
+
+            public List<INotice> List { get; set; } = new();
+
+            public bool AFTER_RESTART { get; set; }
+            public bool SHOW_DATA { get; set; }
+            public bool USE_WAIT { get; set; }
+
+            #region Notification
 
             public enum INotification : byte
             {
-                None,
-                Beep,
-                Message
+                NONE,
+                BEEP,
+                MESSAGE
             }
 
-            public INotification Notification { get; set; } = INotification.Message;
+            public INotification Notification { get; set; } = INotification.MESSAGE;
 
-            public bool Active { get; set; }
+            #endregion
+
+            #region Type
+
+            public enum EType : byte
+            {
+                NONE,
+                ACTIVE,
+                WAIT
+            }
+
+            public EType Type { get; set; }
+
+            public bool Active
+            {
+                get => Type == EType.ACTIVE;
+            }
+
+            #endregion
 
             public void Modify()
             {
-                if (Active)
+                switch (Type)
                 {
-                    Factory();
+                    case EType.ACTIVE:
 
-                    Active = false;
-                }
-                else
-                {
-                    Active = true;
+                        Factory();
+
+                        Type = EType.NONE;
+
+                        break;
+
+                    case EType.NONE when USE_WAIT:
+
+                        Type = EType.WAIT;
+
+                        break;
+
+                    default:
+
+                        Type = EType.ACTIVE;
+
+                        break;
                 }
             }
 
@@ -616,8 +632,6 @@ namespace GTA_5_RP_Bot
 
             public DateTimeOffset? Date { get; set; }
             public TimeSpan? Header { get; set; }
-
-            public bool History { get; set; }
 
             private void Factory()
             {
@@ -627,40 +641,61 @@ namespace GTA_5_RP_Bot
                 Header = null;
             }
 
-            public List<INotice>? List { get; set; }
-
             public string Condition()
             {
-                char T = (Active || (List is not null && Recursion(Name, List).Any(x => x.Value.Active))) switch
+                char T = ' ';
+
+                if (Recursion(Name, List).Any(x => x.Value.Active))
                 {
-                    true => 'X',
-                    false when Time.HasValue => '√',
-                    _ => '~'
-                };
+                    T = ' ';
+                }
+                else
+                {
+                    switch (Type)
+                    {
+                        case EType.ACTIVE:
+
+                            T = 'x';
+
+                            break;
+
+                        case EType.WAIT:
+
+                            T = '∙';
+
+                            break;
+
+                        case EType.NONE:
+
+                            T = '√';
+
+                            break;
+                    }
+                }
+                
 
                 return "[" + T + "]";
             }
 
             public string Value()
             {
-                string T = "";
-
                 if (Active)
                 {
                     if (Header.HasValue)
                     {
-                        T = $"~ {Helper.Time(Header.Value)}";
+                        return $"~ {Helper.Time(Header.Value)}";
                     }
                 }
-                else if (History)
+                    
+                if (SHOW_DATA)
                 {
                     if (Date.HasValue)
                     {
-                        T = $"- {Date.Value:hh:mm:ss}";
+                        return $"- {Date.Value:hh:mm:ss}";
                     }
                 }
 
-                return T;
+                return "";
             }
 
             public override string ToString()
@@ -684,7 +719,7 @@ namespace GTA_5_RP_Bot
                         Dictionary[Notice.Name] = Notice;
                     }
 
-                    if (Notice.List == null || Notice.List.Count == 0) continue;
+                    if (Notice.List.Count == 0) continue;
 
                     foreach (var T in Recursion(Notice.Name, Notice.List))
                     {
@@ -704,7 +739,7 @@ namespace GTA_5_RP_Bot
             {
                 string Name = $"{X} - {Notice.Name}";
 
-                if (Notice.List == null || Notice.List.Count == 0)
+                if (Notice.List.Count == 0)
                 {
                     Dictionary[Name] = Notice;
                 }
@@ -806,7 +841,7 @@ namespace GTA_5_RP_Bot
             {
                 int[] Array = new int[] { Start, Per }.Where(x => x > 0).ToArray();
 
-                return $"[{(Index == Count ? "√" : "X")}] {Name} - {Value} BP{(Array.Length == 0 ? "" : " = ")}{string.Join(" | ", Array.Select(N => N + "$"))}{(Count > 1 ? $" ({Index}/{Count})" : "")}";
+                return $"[{(Index == Count ? '√' : 'x')}] {Name} - {Value} BP{(Array.Length == 0 ? "" : " = ")}{string.Join(" | ", Array.Select(N => N + "$"))}{(Count > 1 ? $" ({Index}/{Count})" : "")}";
             }
         }
 
@@ -869,7 +904,7 @@ namespace GTA_5_RP_Bot
                 List.Add("X");
             }
 
-            _ = new Mutex(true, string.Join("-", List), out Unique);
+            _ = new Mutex(true, string.Join('∙', List), out Unique);
 
             #endregion
 
@@ -1009,9 +1044,12 @@ namespace GTA_5_RP_Bot
                         Native.SendMessage(Current.MainWindowHandle, Native.WM_SETICON, Native.ICON_BIG, Hicon);
                     }
 
+                    Console.OutputEncoding = System.Text.Encoding.UTF8;
+
                     Init();
                 }
             }
+
 
             Console.ReadLine();
         }
@@ -1090,86 +1128,160 @@ namespace GTA_5_RP_Bot
             {
                 for (int i = 1; i <= 3; i++)
                 {
-                    NoticeList.Add(new INotice
+                    NoticeList.Add(new($"Аккаунт #{i}", 1)
                     {
-                        Name = $"Аккаунт #{i}",
-                        Group = 1,
                         List = new List<INotice>
                         {
-                            new() { Name = "Задание", Time = TimeSpan.FromHours(2), Dump = false },
-                            new()
+                            new("Задание", TimeSpan.FromHours(2)),
+                            new("Событие", TimeSpan.FromHours(5))
                             {
-                                Name = "Событие",
-                                Time = TimeSpan.FromHours(5),
-                                Dump = false,
                                 List = new List<INotice>
                                 {
-                                    new() { Name = "Доставка горючего", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
-                                    new() { Name = "Следуйте по маршруту", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new("Доставка горючего", TimeSpan.FromHours(5)) 
+                                    {
+                                        Notification = INotice.INotification.NONE 
+                                    },
+                                    new("Следуйте по маршруту", TimeSpan.FromHours(5)) 
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
 
-                                    new() { Name = "Попал на риф", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
-                                    new() { Name = "Ритм праздника", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new("Попал на риф", TimeSpan.FromHours(5)) 
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
+                                    new("Ритм праздника", TimeSpan.FromHours(5))
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
 
-                                    new() { Name = "Частная жизнь", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
-                                    new() { Name = "Безопасное пространство", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
-                                    
-                                    new() { Name = "Уборка озера", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
-                                    new() { Name = "Запал праздника", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                    new("Частная жизнь", TimeSpan.FromHours(5))
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
+                                    new("Безопасное пространство", TimeSpan.FromHours(5))
+                                    {
+                                        USE_WAIT = true,
 
-                                    new() { Name = "Тестирование", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
-                                    new() { Name = "Богатый рацион", Time = TimeSpan.FromHours(5), Notification = INotice.INotification.None },
+                                        Notification = INotice.INotification.NONE
+                                    },
+
+                                    new("Уборка озера", TimeSpan.FromHours(5))
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
+                                    new("Запал праздника", TimeSpan.FromHours(5))
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
+
+                                    new("Тестирование", TimeSpan.FromHours(5))
+                                    {
+                                        Notification = INotice.INotification.NONE
+                                    },
+                                    new("Богатый рацион", TimeSpan.FromHours(5))
+                                    {
+                                        USE_WAIT = true,
+
+                                        Notification = INotice.INotification.NONE
+                                    }
                                 }
                             },
-                            new()
+                            new("Неофициальная организация")
                             {
-                                Name = "Неофициальная организация",
                                 List = new List<INotice>
                                 {
-                                    new() { Name = "Большой улов", Time = TimeSpan.FromHours(24), Dump = false, History = true },
+                                    new("Большой улов", TimeSpan.FromHours(24)) 
+                                    {
+                                        SHOW_DATA = true
+                                    },
 
-                                    new() { Name = "Грандиозная уборка", Time = TimeSpan.FromHours(26), Dump = false, History = true },
-                                    new() { Name = "Мясной день", Time = TimeSpan.FromHours(26), Dump = false, History = true },
+                                    new("Грандиозная уборка", TimeSpan.FromHours(26)) 
+                                    {
+                                        SHOW_DATA = true
+                                    },
+                                    new("Мясной день", TimeSpan.FromHours(26))
+                                    {
+                                        SHOW_DATA = true
+                                    },
 
-                                    new() { Name = "Долгожданная встреча", Time = TimeSpan.FromHours(20), Dump = false, History = true },
-                                    new() { Name = "Обновляем гардероб", Time = TimeSpan.FromHours(20), Dump = false, History = true }
+                                    new("Долгожданная встреча", TimeSpan.FromHours(20))
+                                    {
+                                        SHOW_DATA = true
+                                    },
+                                    new("Обновляем гардероб", TimeSpan.FromHours(20)) 
+                                    {
+                                        SHOW_DATA = true
+                                    }
                                 }}
                         }
                     });
                 }
 
-                NoticeList.Add(new()
+                NoticeList.Add(new("Преступный синдикат", 2)
                 {
-                    Name = "Преступный синдикат",
-                    Group = 2,
                     List = new List<INotice>
                     {
-                        new() { Name = "Угон авто", Time = TimeSpan.FromHours(1.5), History = true },
-                        new() { Name = "Работа сутенёром", Time = TimeSpan.FromHours(1.5), History = true }
+                        new("Угон авто", TimeSpan.FromHours(1.5)) 
+                        {
+                            AFTER_RESTART = true,
+                            SHOW_DATA = true
+                        },
+                        new("Работа сутенёром", TimeSpan.FromHours(1.5)) 
+                        {
+                            AFTER_RESTART = true,
+                            SHOW_DATA = true 
+                        }
                     }
                 });
 
-                NoticeList.Add(new()
+                NoticeList.Add(new("Неофициальная организация", 2)
                 {
-                    Name = "Неофициальная организация",
-                    Group = 2,
                     Time = TimeSpan.FromHours(2),
-                    History = true,
+                    SHOW_DATA = true,
                     List = new List<INotice>
                     {
+                        new("Скользкая дорожка", TimeSpan.FromHours(3)) 
+                        {
+                            AFTER_RESTART = true,
+                            SHOW_DATA = true
+                        },
+                        new("Мотивированное волонтерство", TimeSpan.FromHours(3))
+                        {
+                            AFTER_RESTART = true,
+                            SHOW_DATA = true
+                        },
 
-                        new() { Name = "Скользкая дорожка", Time = TimeSpan.FromHours(3), History = true },
-                        new() { Name = "Мотивированное волонтерство", Time = TimeSpan.FromHours(3), History = true },
-
-                        new() { Name = "Долгожданная встреча", Time = TimeSpan.FromHours(4), History = true },
-                        new() { Name = "Обновляем гардероб", Time = TimeSpan.FromHours(4), History = true }
+                        new("Долгожданная встреча", TimeSpan.FromHours(4)) 
+                        {
+                            AFTER_RESTART = true,
+                            SHOW_DATA = true 
+                        },
+                        new("Обновляем гардероб", TimeSpan.FromHours(4)) 
+                        {
+                            AFTER_RESTART = true,
+                            SHOW_DATA = true 
+                        }
                     }
                 });
 
 
                 NoticeList.AddRange(new List<INotice>
                 {
-                    new() { Name = "Почта", Group = 3, Time = TimeSpan.FromMinutes(10), Notification = INotice.INotification.Beep },
-                    new() { Name = "Работа", Group = 3, Time = TimeSpan.FromMinutes(3), Notification = INotice.INotification.Beep }
+                    new("Почта", 3) 
+                    {
+                        AFTER_RESTART = true,
+
+                        Time = TimeSpan.FromMinutes(10), 
+                        Notification = INotice.INotification.BEEP 
+                    },
+                    new("Работа", 3)
+                    {
+                        AFTER_RESTART = true,
+
+                        Time = TimeSpan.FromMinutes(3), 
+                        Notification = INotice.INotification.BEEP 
+                    }
                 });
 
                 new Thread(() => DoNotice()).Start();
@@ -1212,11 +1324,11 @@ namespace GTA_5_RP_Bot
 
             var Selection = new List<string>
             {
-                "[~] Список",
-                "[~] Пользователи",
+                "[ ] Список",
+                "[ ] Пользователи",
                 "",
-                $"[{(Message == EMessage.ENABLED ? "√" : Message == EMessage.DISABLED ? "X" : "?")}] Сообщения",
-                $"[{(Security.Header.HasValue ? "?" : Security.Active ? "√" : "X")}] Темы",
+                $"[{(Message == EMessage.ENABLED ? '√' : Message == EMessage.DISABLED ? 'x' : '∙')}] Сообщения",
+                $"[{(Security.Header.HasValue ? '∙' : Security.Active ? '√' : 'x')}] Темы",
             };
 
             if (Unique)
@@ -1224,8 +1336,8 @@ namespace GTA_5_RP_Bot
                 Selection.AddRange(new string[]
                 {
                     "",
-                    "[~] Уведомления",
-                    "[~] Вознаграждение"
+                    "[ ] Уведомления",
+                    "[ ] Вознаграждение"
                 });
             }
 
@@ -1327,17 +1439,17 @@ namespace GTA_5_RP_Bot
                                 {
                                     if (Certificate.Date.HasValue)
                                     {
-                                        var Latency = Helper.Latency($"У{(Case.Key == ConsoleKey.OemMinus ? "меньш" : Case.Key == ConsoleKey.OemPlus ? "велич" : "")}ить на: ");
+                                        var Choice = Helper.Choice($"У{(Case.Key == ConsoleKey.OemMinus ? "меньш" : Case.Key == ConsoleKey.OemPlus ? "велич" : "")}ить на: ");
 
-                                        if (Latency.HasValue)
+                                        if (Choice.HasValue)
                                         {
                                             if (Case.Key == ConsoleKey.OemMinus)
                                             {
-                                                Certificate.Date = Certificate.Date.Value.Add(-Latency.Value);
+                                                Certificate.Date = Certificate.Date.Value.Add(-Choice.Value);
                                             }
                                             else if (Case.Key == ConsoleKey.OemPlus)
                                             {
-                                                Certificate.Date = Certificate.Date.Value.Add(Latency.Value);
+                                                Certificate.Date = Certificate.Date.Value.Add(Choice.Value);
                                             }
 
                                             if (Storage is not null)
@@ -1376,11 +1488,11 @@ namespace GTA_5_RP_Bot
                                             switch (Case.Index)
                                             {
                                                 case 0:
-                                                    var Latency = Helper.Latency("Аренда: ");
+                                                    var Choice = Helper.Choice("Аренда: ");
 
-                                                    if (Latency.HasValue)
+                                                    if (Choice.HasValue)
                                                     {
-                                                        Certificate.DoThread(Latency.Value);
+                                                        Certificate.DoThread(Choice.Value);
                                                     }
 
                                                     break;
@@ -1517,7 +1629,7 @@ namespace GTA_5_RP_Bot
 
                         Selection = new List<string>
                         {
-                            $"[{(User.Message ? "√" : "X")}] Сообщения", "[~] Темы"
+                            $"[{(User.Message ? '√' : 'x')}] Сообщения", "[ ] Темы"
                         };
 
                         Case = Helper.Table(0, ">", Selection, Console.CursorTop - 1, ConsoleKey.F5, ConsoleKey.Escape);
@@ -1541,7 +1653,7 @@ namespace GTA_5_RP_Bot
                                     Console.WriteLine("\n\n");
 
                                     Selection = User.Security
-                                        .Select(x => $"[{(x.Value ? "√" : "X")}] {x.Key}")
+                                        .Select(x => $"[{(x.Value ? '√' : 'x')}] {x.Key}")
                                         .ToList();
 
                                     Case = Helper.Table(0, ">", Selection, Console.CursorTop - 1, ConsoleKey.F5, ConsoleKey.Escape);
@@ -1623,11 +1735,11 @@ namespace GTA_5_RP_Bot
                 {
                     if (Security.Active) goto RETRY;
 
-                    var Latency = Helper.Latency("Через: ");
+                    var Choice = Helper.Choice("Через: ");
 
-                    if (Latency.HasValue)
+                    if (Choice.HasValue)
                     {
-                        Security.DoThread(Latency.Value);
+                        Security.DoThread(Choice.Value);
                     }
                 }
             }
@@ -1724,17 +1836,17 @@ namespace GTA_5_RP_Bot
                     {
                         if (Notice.Date.HasValue)
                         {
-                            var Latency = Helper.Latency($"У{(Case.Key == ConsoleKey.OemMinus ? "меньш" : Case.Key == ConsoleKey.OemPlus ? "велич" : "")}ить на: ");
+                            var Choice = Helper.Choice($"У{(Case.Key == ConsoleKey.OemMinus ? "меньш" : Case.Key == ConsoleKey.OemPlus ? "велич" : "")}ить на: ");
 
-                            if (Latency.HasValue)
+                            if (Choice.HasValue)
                             {
                                 if (Case.Key == ConsoleKey.OemMinus)
                                 {
-                                    Notice.Date = Notice.Date.Value.Add(-Latency.Value);
+                                    Notice.Date = Notice.Date.Value.Add(-Choice.Value);
                                 }
                                 else if (Case.Key == ConsoleKey.OemPlus)
                                 {
-                                    Notice.Date = Notice.Date.Value.Add(Latency.Value);
+                                    Notice.Date = Notice.Date.Value.Add(Choice.Value);
                                 }
 
                                 if (Storage is not null)
@@ -1757,7 +1869,7 @@ namespace GTA_5_RP_Bot
 
                     if (Case.Key == ConsoleKey.Enter)
                     {
-                        if (Notice.List == null || Notice.List.Count == 0)
+                        if (Notice.List.Count == 0)
                         {
                             Notice.Modify();
 
@@ -1765,38 +1877,44 @@ namespace GTA_5_RP_Bot
 
                             if (Value.Time.HasValue)
                             {
-                                if (Value.Active)
+                                if (Notice.Type < INotice.EType.WAIT)
                                 {
-                                    int Count = Value.List.Count(x => x.Active);
-
-                                    if (Count == 0)
+                                    if (Value.Active)
                                     {
-                                        Value.Modify();
+                                        int Count = Value.List.Count(x => x.Active);
+
+                                        switch (Count)
+                                        {
+                                            case 0:
+
+                                                Value.Modify();
+
+                                                break;
+
+                                            case > 1:
+
+                                                Value.Date = Helper.Date().Add(Value.Time.Value);
+
+                                                if (Storage is not null)
+                                                {
+                                                    string Name = string.Join(" - ", Header);
+
+                                                    if (Storage.Notice.ContainsKey(Name))
+                                                    {
+                                                        Storage.Notice[Name] = Value.Date.Value;
+                                                        Storage.Save(StorageFile);
+                                                    }
+                                                }
+
+                                                break;
+                                        }
                                     }
                                     else
                                     {
-                                        if (Count > 1)
+                                        if (Notice.Active)
                                         {
-                                            Value.Date = Helper.Date().Add(Value.Time.Value);
-
-                                            if (Storage is not null)
-                                            {
-                                                string Name = string.Join(" - ", Header);
-
-                                                if (Storage.Notice.ContainsKey(Name))
-                                                {
-                                                    Storage.Notice[Name] = Value.Date.Value;
-                                                    Storage.Save(StorageFile);
-                                                }
-                                            }
+                                            Value.Modify();
                                         }
-                                    }
-                                }
-                                else
-                                {
-                                    if (Notice.Active)
-                                    {
-                                        Value.Modify();
                                     }
                                 }
                             }
@@ -1849,7 +1967,7 @@ namespace GTA_5_RP_Bot
                     {
                         Compensation.Index = Compensation.Count;
 
-                        Compensation.DoThread(Helper.Dump());
+                        Compensation.DoThread(Helper.Tomorrow());
                     }
                     else if (Case.Key == ConsoleKey.OemMinus)
                     {
@@ -1880,7 +1998,7 @@ namespace GTA_5_RP_Bot
 
                         if (Compensation.Index == Compensation.Count)
                         {
-                            Compensation.DoThread(Helper.Dump());
+                            Compensation.DoThread(Helper.Tomorrow());
                         }
                     }
 
@@ -2076,9 +2194,9 @@ namespace GTA_5_RP_Bot
                                         {
                                             if (T.LastMessageID == X.LastMessageID) continue;
 
-                                            var Date = Helper.Date(X.LastMessageID).Subtract(T.Date);
+                                            var N = Helper.FromUnixTime(X.LastMessageID).Subtract(T.Date);
 
-                                            if (Date.TotalSeconds >= 2.5 * 60)
+                                            if (N.TotalSeconds >= 2.5 * 60)
                                             {
                                                 T.Update(X.LastMessageID);
 
@@ -2289,7 +2407,7 @@ namespace GTA_5_RP_Bot
                             {
                                 if (Notice.Key == Pair.Key)
                                 {
-                                    Notice.Value.Modify();
+                                    Notice.Value.Type = INotice.EType.ACTIVE;
 
                                     while (Notice.Value.Date == null) { }
 
@@ -2354,11 +2472,11 @@ namespace GTA_5_RP_Bot
                                     }
                                 }
 
-                                var Dump = Helper.Dump();
+                                var Tomorrow = Helper.Tomorrow();
 
-                                if (X.Value.Dump && X.Value.Date > Dump)
+                                if (X.Value.AFTER_RESTART && X.Value.Date > Tomorrow)
                                 {
-                                    X.Value.Date = Dump;
+                                    X.Value.Date = Tomorrow;
                                 }
 
                                 try
@@ -2374,11 +2492,11 @@ namespace GTA_5_RP_Bot
 
                                     X.Value.Source.Token.ThrowIfCancellationRequested();
 
-                                    X.Value.Active = false;
+                                    X.Value.Type = INotice.EType.NONE;
 
                                     switch (X.Value.Notification)
                                     {
-                                        case INotice.INotification.Beep:
+                                        case INotice.INotification.BEEP:
 
                                             await Task.Delay(2500, X.Value.Source.Token);
 
@@ -2392,7 +2510,7 @@ namespace GTA_5_RP_Bot
                                             }
 
                                             break;
-                                        case INotice.INotification.Message when Message > EMessage.DISABLED:
+                                        case INotice.INotification.MESSAGE when Message > EMessage.DISABLED:
 
                                             string[] Array = X.Key.Split(" - ");
 
@@ -2466,15 +2584,7 @@ namespace GTA_5_RP_Bot
 
                 var Separate = SeparateList
                     .Where(x => x.ID == FileName)
-                    .FirstOrDefault(x =>
-                    {
-                        return x.Car switch
-                        {
-                            null => false,
-
-                            _ => x.Car.Key == e.FullPath
-                        };
-                    });
+                    .FirstOrDefault(x => x.Car?.Key == e.FullPath);
 
                 if (Separate == null) return;
 

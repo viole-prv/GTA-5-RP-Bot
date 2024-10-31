@@ -5,13 +5,6 @@ namespace GTA_5_RP_Bot
 {
     public partial class Helper
     {
-        private static readonly Random Random = new();
-
-        public static double Double(double Minimum, double Maximum)
-        {
-            return Random.NextDouble() * (Maximum - Minimum) + Minimum;
-        }
-
         public static bool IsValidJson(string _)
         {
             if (string.IsNullOrWhiteSpace(_))
@@ -197,24 +190,10 @@ namespace GTA_5_RP_Bot
             while (true);
         }
 
-        public static DateTime Dump()
-        {
-            var N = Date();
-
-            var X = N.Date.AddHours(7);
-
-            if (N > X)
-            {
-                X = X.AddDays(1);
-            }
-
-            return X;
-        }
-
-        public static TimeSpan? Latency(string Value)
+        public static TimeSpan? Choice(string Value)
         {
 
-        LATENCY:
+        Retry:
 
             Console.Clear();
             Console.Write(Value);
@@ -263,11 +242,25 @@ namespace GTA_5_RP_Bot
                 }
                 else
                 {
-                    goto LATENCY;
+                    goto Retry;
                 }
             }
 
             return null;
+        }
+
+        public static DateTimeOffset Tomorrow()
+        {
+            var N = Date();
+
+            var DT = N.Date.AddHours(7);
+
+            if (N > DT)
+            {
+                DT = DT.AddDays(1);
+            }
+
+            return DT;
         }
 
         public static string Time(TimeSpan TS)
@@ -279,28 +272,36 @@ namespace GTA_5_RP_Bot
             return TS.ToString(F);
         }
 
-        public static DateTime Date(long N)
+        public static DateTimeOffset Date()
+        {
+            var N = DateTimeOffset.UtcNow;
+
+            var TS = TimeSpan.FromHours(3);
+
+            return N.ToOffset(TS);
+        }
+
+        public static DateTime FromUnixTime(long N)
         {
             long MS = new DateTimeOffset(2015, 1, 1, 0, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
             long TZ = N >> 22;
 
-            var DATETIME = DateTimeOffset.FromUnixTimeMilliseconds(MS + TZ);
-            var LOCAL = DATETIME.ToLocalTime();
+            var DT = DateTimeOffset.FromUnixTimeMilliseconds(MS + TZ);
+            var LT = DT.ToLocalTime();
 
-            return LOCAL.DateTime;
+            return LT.DateTime;
         }
 
-        public static DateTimeOffset Date()
-        {
-            var NOW = DateTimeOffset.UtcNow;
-            var TS = TimeSpan.FromHours(3);
+        private static readonly Random Random = new();
 
-            return NOW.ToOffset(TS);
+        public static double Double(double Min, double Max)
+        {
+            return Random.NextDouble() * (Max - Min) + Min;
         }
 
         public static double Average(int Count)
         {
-            return Math.Ceiling(60d / Count) + Double(5, 10);
+            return Math.Ceiling(60d / Count) + Double(5d, 10d);
         }
     }
 }
